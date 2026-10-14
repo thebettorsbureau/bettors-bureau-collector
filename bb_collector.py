@@ -71,17 +71,24 @@ def detect_an_auth():
     ]
     if AN_HEADER and AN_HEADER != "Authorization":
         tries.insert(0, (f"{AN_HEADER} (custom)", {**base, AN_HEADER: f"{AN_SCHEME} {AN_TOKEN}".strip()}, {}))
-    for name, hdr, qp in tries:
+    test = {"bookIds": BOOKS, "periods": "event", "date": "20260317", "division": "D1", "tournament": "0"}
+
+    def pro_count(hdr, qp):
         try:
-            r = requests.get(AN.format(sport="nfl"), headers=hdr, timeout=30,
-                             params={"bookIds": BOOKS, "periods": "event", "date": "20250914", **qp})
+            r = requests.get(AN.format(sport="ncaab"), headers=hdr, timeout=30, params={**test, **qp})
             g = r.json().get("games", []) if r.status_code == 200 else []
-            if g and str(g[0].get("start_time", "")).startswith("2025-09-1"):
-                AN_HEADERS.clear(); AN_HEADERS.update(hdr); AN_PARAMS.update(qp)
-                print(f"AN auth: token accepted via {name}")
-                return
+            return sum(1 for x in g if x.get("pro_report"))
         except Exception:
-            pass
+            return -1
+
+    anon = pro_count(base, {})
+    print(f"AN auth: public feed shows pro report on {anon} test games")
+    for name, hdr, qp in tries:
+        n = pro_count(hdr, qp)
+        if n > anon:
+            AN_HEADERS.clear(); AN_HEADERS.update(hdr); AN_PARAMS.update(qp)
+            print(f"AN auth: token accepted via {name} (pro report on {n} test games)")
+            return
     print("AN auth: token NOT accepted by any method (public feed only)")
 
 
