@@ -51,8 +51,39 @@ KEEP_DAYS = 4
 
 SB = {"apikey": SB_KEY or "", "Authorization": f"Bearer {SB_KEY}", "Content-Type": "application/json"}
 AN_HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
-if AN_TOKEN:
-    AN_HEADERS[AN_HEADER] = f"{AN_SCHEME} {AN_TOKEN}".strip()
+AN_PARAMS = {}
+
+
+def detect_an_auth():
+    """Try common ways of sending the Pro token; keep the one that unlocks date-based history."""
+    if not AN_TOKEN:
+        print("AN auth: no AN_TOKEN set (public feed only)")
+        return
+    base = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+    tries = [
+        ("Authorization: Bearer", {**base, "Authorization": f"Bearer {AN_TOKEN}"}, {}),
+        ("Authorization: raw", {**base, "Authorization": AN_TOKEN}, {}),
+        ("Cookie AN_SESSION_TOKEN_V1", {**base, "Cookie": f"AN_SESSION_TOKEN_V1={AN_TOKEN}"}, {}),
+        ("X-Auth-Token", {**base, "X-Auth-Token": AN_TOKEN}, {}),
+        ("x-api-key", {**base, "x-api-key": AN_TOKEN}, {}),
+        ("query token", base, {"token": AN_TOKEN}),
+        ("query access_token", base, {"access_token": AN_TOKEN}),
+    ]
+    if AN_HEADER and AN_HEADER != "Authorization":
+        tries.insert(0, (f"{AN_HEADER} (custom)", {**base, AN_HEADER: f"{AN_SCHEME} {AN_TOKEN}".strip()}, {}))
+    for name, hdr, qp in tries:
+        try:
+            r = requests.get(AN.format(sport="nfl"), headers=hdr, timeout=30,
+                             params={"bookIds": BOOKS, "periods": "event", "date": "20250914", **qp})
+            g = r.json().get("games", []) if r.status_code == 200 else []
+            if g and str(g[0].get("start_time", "")).startswith("2025-09-1"):
+                AN_HEADERS.clear(); AN_HEADERS.update(hdr); AN_PARAMS.update(qp)
+                print(f"AN auth: token accepted via {name}")
+                return
+        except Exception:
+            pass
+    print("AN auth: token NOT accepted by any method (public feed only)")
+
 
 NOW = datetime.now(timezone.utc)
 
@@ -61,7 +92,7 @@ NOW = datetime.now(timezone.utc)
 def fetch_sport(sport):
     games = {}
     for day in (NOW, NOW + timedelta(days=1)):
-        params = {"bookIds": BOOKS, "periods": "event", "date": day.strftime("%Y%m%d")}
+        params = {"bookIds": BOOKS, "periods": "event", "date": day.strftime("%Y%m%d"), **AN_PARAMS}
         for attempt in range(3):
             try:
                 r = requests.get(AN.format(sport=sport), params=params, headers=AN_HEADERS, timeout=30)
@@ -198,6 +229,7 @@ def sb_post(table, rows, upsert_on=None):
 
 # ---------------------------------------------------------------- main
 def run(dry=False):
+    detect_an_auth()
     tot = {"games": 0, "odds_seen": 0, "odds_written": 0, "sig_seen": 0, "sig_written": 0}
     for sport in SPORTS:
         games_raw = fetch_sport(sport)
