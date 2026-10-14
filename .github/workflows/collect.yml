@@ -5,6 +5,10 @@ on:
     - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
+permissions:
+  actions: write
+  contents: read
+
 concurrency:
   group: collector
   cancel-in-progress: false
@@ -18,6 +22,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Keep schedule alive (GitHub pauses public-repo schedules after 60 idle days)
+        run: gh api -X PUT repos/${{ github.repository }}/actions/workflows/collect.yml/enable || true
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: pip install requests
       - run: python bb_collector.py
         env:
