@@ -26,7 +26,13 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-SPORTS = ["nfl", "ncaaf", "nba", "ncaab", "nhl", "mlb"]
+SPORTS = ["nfl", "ncaaf", "nba", "ncaab", "nhl", "mlb", "wnba", "ncaaw"]
+# College basketball returns nothing unless division=D1 is sent; tournament=0 picks up some
+# neutral-site/tournament dates the plain D1 call misses, so both variants are merged.
+SPORT_VARIANTS = {
+    "ncaab": [{"division": "D1"}, {"division": "D1", "tournament": "0"}],
+    "ncaaw": [{"division": "D1"}, {"division": "D1", "tournament": "0"}],
+}
 BOOKS = "15,30,12,1071,1073,1074,3,21"
 MARKETS = {"spread", "total", "moneyline"}
 AN = "https://api.actionnetwork.com/web/v2/scoreboard/proreport/{sport}"
@@ -99,17 +105,18 @@ NOW = datetime.now(timezone.utc)
 def fetch_sport(sport):
     games = {}
     for day in (NOW, NOW + timedelta(days=1)):
-        params = {"bookIds": BOOKS, "periods": "event", "date": day.strftime("%Y%m%d"), **AN_PARAMS}
-        for attempt in range(3):
-            try:
-                r = requests.get(AN.format(sport=sport), params=params, headers=AN_HEADERS, timeout=30)
-                if r.status_code == 200:
-                    for g in r.json().get("games", []):
-                        games[g["id"]] = g
-                    break
-            except requests.RequestException:
-                pass
-            time.sleep(2 * (attempt + 1))
+        for variant in SPORT_VARIANTS.get(sport, [{}]):
+            params = {"bookIds": BOOKS, "periods": "event", "date": day.strftime("%Y%m%d"), **variant, **AN_PARAMS}
+            for attempt in range(3):
+                try:
+                    r = requests.get(AN.format(sport=sport), params=params, headers=AN_HEADERS, timeout=30)
+                    if r.status_code == 200:
+                        for g in r.json().get("games", []):
+                            games[g["id"]] = g
+                        break
+                except requests.RequestException:
+                    pass
+                time.sleep(2 * (attempt + 1))
     return list(games.values())
 
 
