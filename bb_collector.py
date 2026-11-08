@@ -178,7 +178,15 @@ def parse_game(sport, g):
                     "reverse_line_moves": meta.get("reverse_line_moves"),
                     "explanation": s.get("explanation"), "mins_to_start": mts,
                 })
-    return game, odds, signals
+    score = None
+    if (g.get("real_status") or g.get("status")) in ("inprogress", "halftime"):
+        lo = (box.get("latest_odds") or {}).get("live") or {}
+        score = {"sport": sport, "game_id": g["id"], "status": g.get("real_status") or g.get("status"),
+                 "period": box.get("period"), "clock": box.get("clock"),
+                 "home_score": box.get("total_home_points"), "away_score": box.get("total_away_points"),
+                 "live_spread_home": lo.get("spread_home"), "live_total": lo.get("total"),
+                 "live_ml_home": lo.get("ml_home"), "live_ml_away": lo.get("ml_away"), "mins_to_start": mts}
+    return game, odds, signals, score
 
 
 def odds_key(o):
@@ -247,10 +255,11 @@ def run(dry=False):
     tot = {"games": 0, "odds_seen": 0, "odds_written": 0, "sig_seen": 0, "sig_written": 0}
     for sport in SPORTS:
         games_raw = fetch_sport(sport)
-        games, odds, sigs = [], [], []
+        games, odds, sigs, scores = [], [], [], []
         for g in games_raw:
-            gm, o, s = parse_game(sport, g)
+            gm, o, s, sc = parse_game(sport, g)
             games.append(gm); odds += o; sigs += s
+            if sc: scores.append(sc)
         if not games:
             print(f"{sport}: no games")
             continue
@@ -264,6 +273,12 @@ def run(dry=False):
             sb_post("live_games", games, upsert_on="sport,game_id")
             sb_post("live_odds", o_new)
             sb_post("live_signals", s_new)
+            for r in scores:
+                r["captured_at"] = cap
+            try:
+                sb_post("live_scores", scores)
+            except Exception as e:
+                print("live_scores skipped:", e)
             sb_post("live_latest", [{"k": k, "h": h, "updated_at": cap} for k, h in {**o_lat, **s_lat}.items()],
                     upsert_on="k")
         print(f"{sport}: {len(games)} games | odds {len(odds)} seen, {len(o_new)} changed | "
