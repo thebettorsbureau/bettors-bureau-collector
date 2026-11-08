@@ -180,7 +180,17 @@ def parse_game(sport, g):
                 })
     score = None
     if (g.get("real_status") or g.get("status")) in ("inprogress", "halftime"):
-        lo = (box.get("latest_odds") or {}).get("live") or {}
+        ev = (((g.get("markets") or {}).get("15") or {}).get("event") or {})
+        lo = {}
+        for o in (ev.get("spread") or []) + (ev.get("total") or []) + (ev.get("moneyline") or []):
+            if not o.get("is_live"):
+                continue
+            if o.get("type") == "spread" and o.get("side") == "home":
+                lo["spread_home"] = o.get("value")
+            elif o.get("type") == "total" and o.get("side") == "over":
+                lo["total"] = o.get("value")
+            elif o.get("type") == "moneyline" and o.get("side") in ("home", "away"):
+                lo["ml_" + o["side"]] = o.get("odds")
         score = {"sport": sport, "game_id": g["id"], "status": g.get("real_status") or g.get("status"),
                  "period": box.get("period"), "clock": box.get("clock"),
                  "home_score": box.get("total_home_points"), "away_score": box.get("total_away_points"),
