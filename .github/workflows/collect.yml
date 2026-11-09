@@ -16,7 +16,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,9 +27,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       - run: pip install requests
-      - run: python bb_collector.py
+      - name: Collect every 5 minutes for ~5h40m (GitHub only fires the cron a few times a day)
+        run: |
+          end=$(( $(date +%s) + 340*60 ))
+          while [ $(date +%s) -lt $end ]; do
+            start=$(date +%s)
+            python bb_collector.py || echo "collector run failed, continuing"
+            sleep $(( 300 - ($(date +%s) - start) > 0 ? 300 - ($(date +%s) - start) : 1 ))
+          done
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           AN_TOKEN: ${{ secrets.AN_TOKEN }}
           AN_AUTH_HEADER: ${{ secrets.AN_AUTH_HEADER }}
+      - name: Start the next loop
+        if: always()
+        run: gh workflow run collect.yml --repo ${{ github.repository }} || true
+        env:
+          GH_TOKEN: ${{ github.token }}
