@@ -104,7 +104,8 @@ NOW = datetime.now(timezone.utc)
 # ---------------------------------------------------------------- fetch
 def fetch_sport(sport):
     games = {}
-    for day in (NOW, NOW + timedelta(days=1)):
+    # NOW is UTC; US evening games are still on yesterday's date after 00:00 UTC, so include yesterday
+    for day in (NOW - timedelta(days=1), NOW, NOW + timedelta(days=1)):
         for variant in SPORT_VARIANTS.get(sport, [{}]):
             params = {"bookIds": BOOKS, "periods": "event", "date": day.strftime("%Y%m%d"), **variant, **AN_PARAMS}
             for attempt in range(3):
