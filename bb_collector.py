@@ -303,8 +303,42 @@ def run(dry=False):
     return tot
 
 
+def kick_engine():
+    """Start the NBA engine on time from this reliable 5-minute loop (GitHub skips the engine's own schedules).
+    Needs secret ENGINE_PAT (fine-grained token: repo bettors-bureau-nba-engine, Actions read & write) passed as env."""
+    import os, datetime as _dt, base64
+    tok=os.environ.get("ENGINE_PAT")
+    if not tok: return
+    from zoneinfo import ZoneInfo
+    now=_dt.datetime.now(ZoneInfo("America/New_York")); day=now.strftime("%Y-%m-%d")
+    api="https://api.github.com/repos/thebettorsbureau/bettors-bureau-nba-engine"
+    h={"Authorization":f"Bearer {tok}","Accept":"application/vnd.github+json"}
+    def done(mode):
+        try:
+            r=requests.get(f"{api}/contents/runs_done.txt",headers=h,timeout=20).json()
+            return f"{day} {mode}" in base64.b64decode(r["content"]).decode()
+        except Exception: return False
+    def running():
+        try:
+            r=requests.get(f"{api}/actions/workflows/nightly.yml/runs",params={"status":"in_progress","per_page":1},headers=h,timeout=20).json()
+            q=requests.get(f"{api}/actions/workflows/nightly.yml/runs",params={"status":"queued","per_page":1},headers=h,timeout=20).json()
+            return r.get("total_count",0)+q.get("total_count",0)>0
+        except Exception: return True
+    def fire(wf,inputs=None):
+        requests.post(f"{api}/actions/workflows/{wf}/dispatches",headers=h,json={"ref":"main",**({"inputs":inputs} if inputs else {})},timeout=20)
+        print("engine dispatched",wf,inputs or "")
+    m=now.hour*60+now.minute
+    if 12*60+40<=m<15*60+30 and not done("full") and not running(): fire("nightly.yml",{"mode":"full"})
+    if 18*60+40<=m<20*60 and done("full") and not done("pretip") and not running(): fire("nightly.yml",{"mode":"pretip"})
+    if 10<=now.hour<=20 and 5<=now.minute<10: fire("snapshots.yml")
+
+
 if __name__ == "__main__":
     if not SB_KEY and "--dry" not in sys.argv:
         sys.exit("SUPABASE_KEY not set")
-    run(dry="--dry" in sys.argv)
+    try:
+        run(dry="--dry" in sys.argv)
+    finally:
+        try: kick_engine()
+        except Exception as e: print("kick_engine failed", e)
 
