@@ -40,6 +40,7 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           AN_TOKEN: ${{ secrets.AN_TOKEN }}
           AN_AUTH_HEADER: ${{ secrets.AN_AUTH_HEADER }}
+          ENGINE_PAT: ${{ secrets.ENGINE_PAT }}
       - name: Start the next loop
         if: always()
         run: gh workflow run collect.yml --repo ${{ github.repository }} || true
