@@ -118,6 +118,21 @@ def fetch_sport(sport):
                 except requests.RequestException:
                     pass
                 time.sleep(2 * (attempt + 1))
+            # 1st-half / 1st-quarter lines (for the derivative-pricing study); never breaks the main pull
+            try:
+                pp = dict(params, periods="firsthalf,firstquarter")
+                r = requests.get(AN.format(sport=sport), params=pp, headers=AN_HEADERS, timeout=30)
+                if r.status_code == 200:
+                    for g in r.json().get("games", []):
+                        if g["id"] not in games:
+                            continue
+                        base = games[g["id"]].setdefault("markets", {}) or {}
+                        for bk, mk in (g.get("markets") or {}).items():
+                            for per in ("firsthalf", "firstquarter"):
+                                if (mk or {}).get(per):
+                                    base.setdefault(bk, {})[per] = mk[per]
+            except Exception:
+                pass
     return list(games.values())
 
 
@@ -147,8 +162,11 @@ def parse_game(sport, g):
 
     odds = []
     for book_id, mk in (g.get("markets") or {}).items():
-        for market, outcomes in (mk.get("event") or {}).items():
+      for per, pre in (("event", ""), ("firsthalf", "1h_"), ("firstquarter", "1q_")):
+        for market, outcomes in ((mk or {}).get(per) or {}).items():
             if market not in MARKETS:
+                continue
+            if pre and sport not in ("nba", "ncaab", "nfl", "ncaaf"):
                 continue
             for o in outcomes or []:
                 if o.get("is_alt_market"):
@@ -158,7 +176,7 @@ def parse_game(sport, g):
                     side = "home" if o.get("team_id") == home_id else "away"
                 bi = o.get("bet_info") or {}
                 odds.append({
-                    "sport": sport, "game_id": g["id"], "book_id": int(book_id), "market": market,
+                    "sport": sport, "game_id": g["id"], "book_id": int(book_id), "market": pre + market,
                     "side": side, "value": o.get("value"), "odds": o.get("odds"),
                     "tickets_pct": (bi.get("tickets") or {}).get("percent"),
                     "money_pct": (bi.get("money") or {}).get("percent"),
@@ -282,7 +300,14 @@ def run(dry=False):
             r["captured_at"] = cap
         if not dry:
             sb_post("live_games", games, upsert_on="sport,game_id")
-            sb_post("live_odds", o_new)
+            o_main = [r for r in o_new if not r["market"].startswith(("1h_", "1q_"))]
+            o_der = [r for r in o_new if r["market"].startswith(("1h_", "1q_"))]
+            sb_post("live_odds", o_main)
+            try:
+                sb_post("live_odds", o_der)
+                if o_der: print(f"{sport}: 1H/1Q lines written {len(o_der)}")
+            except Exception as e:
+                print(f"{sport}: 1H/1Q write skipped: {str(e)[:200]}")
             sb_post("live_signals", s_new)
             for r in scores:
                 r["captured_at"] = cap
