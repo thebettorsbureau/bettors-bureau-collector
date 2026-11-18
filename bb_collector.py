@@ -356,6 +356,24 @@ def kick_engine():
     if 12*60+40<=m<15*60+30 and not done("full") and not running(): fire("nightly.yml",{"mode":"full"})
     if 18*60+40<=m<20*60 and done("full") and not done("pretip") and not running(): fire("nightly.yml",{"mode":"pretip"})
     if 10<=now.hour<=20 and 5<=now.minute<10: fire("snapshots.yml")
+    # ---- NHL (added Nov 18): GitHub skips/delays the NHL schedules too, so this loop starts them on time
+    def nhl_done():
+        try:
+            r=requests.get(f"{api}/contents/nhl/runs_done.txt",headers=h,timeout=20).json()
+            return f"{day} full" in base64.b64decode(r["content"]).decode()
+        except Exception: return False
+    def nhl_running():
+        try:
+            n=0
+            for st in ("in_progress","queued"):
+                n+=requests.get(f"{api}/actions/workflows/nhl_nightly.yml/runs",params={"status":st,"per_page":1},headers=h,timeout=20).json().get("total_count",0)
+            return n>0
+        except Exception: return True
+    weekend=now.weekday()>=5
+    nhl_start=(10*60+40) if weekend else (12*60+40)
+    if nhl_start<=m<16*60 and not nhl_done() and not nhl_running(): fire("nhl_nightly.yml",{"mode":"full"})       # publish + lock
+    if 16*60+15<=m<22*60 and now.minute%30<5 and not nhl_running(): fire("nhl_nightly.yml",{"mode":"pretip"})     # goalie / news updates every 30 min
+    if 10<=now.hour<=22 and 5<=now.minute<10: fire("nhl_snapshots.yml")                                         # hourly lines for CLV
 
 
 if __name__ == "__main__":
