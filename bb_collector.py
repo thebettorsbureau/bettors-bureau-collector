@@ -354,7 +354,7 @@ def kick_engine():
         print("engine dispatched",wf,inputs or "")
     m=now.hour*60+now.minute
     if 12*60+40<=m<15*60+30 and not done("full") and not running(): fire("nightly.yml",{"mode":"full"})
-    if 15*60<=m<20*60+30 and now.minute%30<5 and done("full") and not running(): fire("nightly.yml",{"mode":"pretip"})   # Nov 24: re-read every 30 min so injury/lineup news moves picks before the line does
+    if 11*60<=m<22*60+30 and now.minute%30<5 and done("full") and not running(): fire("nightly.yml",{"mode":"pretip"})   # Nov 25: every 30 min 11:00-10:30 ET, so early tips and late West games get reads right up to their lock
     if 10<=now.hour<=20 and 5<=now.minute<10: fire("snapshots.yml")
     # ---- NHL (added Nov 18): GitHub skips/delays the NHL schedules too, so this loop starts them on time
     def nhl_done():
