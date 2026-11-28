@@ -16,8 +16,13 @@ def get(table,params):
         off+=1000
 G=get('live_games',{'select':'game_id,start_time,home_team,away_team,status,home_score,away_score','sport':'eq.ncaab','start_time':f'gte.{SINCE}','order':'game_id.asc'})
 print('games',len(G))
-O=get('live_odds',{'select':'game_id,book_id,market,side,value,odds,captured_at','sport':'eq.ncaab','book_id':'in.(15,30)','market':'in.(spread,moneyline)',
-                   'is_live':'eq.false','captured_at':f'gte.{SINCE}','order':'captured_at.asc'})
+# the odds table is big: ask for a few games at a time (one big ordered query times out), sort here
+ids=[g['game_id'] for g in G]; O=[]
+for i in range(0,len(ids),25):
+    chunk=','.join(str(x) for x in ids[i:i+25])
+    O+=get('live_odds',{'select':'game_id,book_id,market,side,value,odds,captured_at','game_id':f'in.({chunk})','book_id':'in.(15,30)',
+                        'market':'in.(spread,moneyline)','is_live':'eq.false'})
+O.sort(key=lambda o:o['captured_at'])
 print('odds rows',len(O))
 by={}
 for o in O: by.setdefault(o['game_id'],[]).append(o)
